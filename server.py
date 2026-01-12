@@ -3,16 +3,48 @@ Flask API Server for UniDownload
 Provides REST API endpoints for downloading media from various platforms
 """
 
+
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
+from flasgger import Swagger, swag_from
+import logging
 import os
 import re
 from youtube import YouTubeDownloader
 from instagram import InstagramDownloader
 from facebook import FacebookDownloader
 
+# Celery setup
+from celery import Celery
+
+def make_celery(app):
+    celery = Celery(
+        app.import_name,
+        backend=os.environ.get('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0'),
+        broker=os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+    )
+    celery.conf.update(app.config)
+    class ContextTask(celery.Task):
+        def __call__(self, *args, **kwargs):
+            with app.app_context():
+                return self.run(*args, **kwargs)
+    celery.Task = ContextTask
+    return celery
+
+
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": os.environ.get('CORS_ORIGINS', '*')}})
+Swagger(app)
+
+# Logging setup
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s %(name)s %(threadName)s : %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Celery instance
+celery = make_celery(app)
 
 # Initialize downloaders
 youtube_dl = YouTubeDownloader()
@@ -35,6 +67,41 @@ def detect_platform(url):
 
 
 @app.route('/api/detect', methods=['POST'])
+@swag_from({
+    'tags': ['Detection'],
+    'parameters': [
+        {
+            'name': 'body',
+            'in': 'body',
+            'required': True,
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'url': {'type': 'string', 'example': 'https://youtube.com/watch?v=...'}
+                },
+                'required': ['url']
+            }
+        }
+    ],
+    'responses': {
+        200: {
+            'description': 'Media info',
+            'examples': {
+                'application/json': {
+                    'platform': 'youtube',
+                    'title': 'Video Title',
+                    'uploader': 'Channel Name',
+                    'duration': 180,
+                    'thumbnail': 'https://...',
+                    'formats': [],
+                    'options': []
+                }
+            }
+        },
+        400: {'description': 'Invalid input'},
+        500: {'description': 'Server error'}
+    }
+})
 def detect():
     """Detect platform and get media info"""
     try:
@@ -42,29 +109,26 @@ def detect():
         url = data.get('url', '')
         
         if not url:
+            logger.warning('No URL provided to /api/detect')
             return jsonify({'error': 'URL is required'}), 400
         
         platform = detect_platform(url)
         
         if platform == 'unknown':
+            logger.warning(f'Unsupported platform for url: {url}')
             return jsonify({'error': 'Unsupported platform'}), 400
         
         # Get media info based on platform
-        if platform == 'youtube':
-            try:
+        try:
+            if platform == 'youtube':
                 info = youtube_dl.get_video_info(url)
                 if not info:
+                    logger.error('Failed to fetch YouTube video information')
                     return jsonify({'error': 'Failed to fetch video information'}), 400
-                
-                # Get available formats
                 formats = youtube_dl.display_formats(info, return_formats=True)
-                
-                # Format the formats for frontend
-                formatted_formats = [{
-                    'format_id': f['height'],
-                    'label': f['display']
-                } for f in formats]
-                
+                formatted_formats = [
+                    {'format_id': f['height'], 'label': f['display']} for f in formats
+                ]
                 response = {
                     'platform': 'youtube',
                     'title': info.get('title', 'Unknown'),
@@ -75,20 +139,12 @@ def detect():
                     'has_subtitles': bool(info.get('subtitles')),
                     'options': ['video', 'audio', 'playlist', 'subtitles', 'thumbnail']
                 }
-            except Exception as e:
-                print(f"YouTube error: {str(e)}")
-                import traceback
-                traceback.print_exc()
-                return jsonify({'error': f'YouTube error: {str(e)}'}), 500
-            
-        elif platform == 'instagram':
-            try:
+            elif platform == 'instagram':
                 info = instagram_dl.get_media_info(url)
                 if not info:
+                    logger.error('Failed to fetch Instagram media information')
                     return jsonify({'error': 'Failed to fetch media information'}), 400
-                
                 media_type = instagram_dl.detect_media_type(url)
-                
                 response = {
                     'platform': 'instagram',
                     'title': info.get('title', 'Unknown'),
@@ -97,18 +153,12 @@ def detect():
                     'media_type': media_type,
                     'options': ['post', 'audio']
                 }
-            except Exception as e:
-                print(f"Instagram error: {str(e)}")
-                return jsonify({'error': f'Instagram error: {str(e)}'}), 500
-            
-        elif platform == 'facebook':
-            try:
+            elif platform == 'facebook':
                 info = facebook_dl.get_video_info(url)
                 if not info:
+                    logger.error('Failed to fetch Facebook content information')
                     return jsonify({'error': 'Failed to fetch content information'}), 400
-                
                 content_type = facebook_dl.detect_content_type(url)
-                
                 response = {
                     'platform': 'facebook',
                     'title': info.get('title', 'Unknown'),
@@ -118,11 +168,14 @@ def detect():
                     'content_type': content_type,
                     'options': ['post', 'audio']
                 }
-            except Exception as e:
-                print(f"Facebook error: {str(e)}")
-                return jsonify({'error': f'Facebook error: {str(e)}'}), 500
-        
-        return jsonify(response)
+            else:
+                logger.error(f'Unknown platform: {platform}')
+                return jsonify({'error': 'Unknown platform'}), 400
+            logger.info(f"/api/detect success for {platform} - {url}")
+            return jsonify(response)
+        except Exception as e:
+            logger.exception(f"Error in /api/detect: {str(e)}")
+            return jsonify({'error': str(e)}), 500
         
     except Exception as e:
         print(f"Server error: {str(e)}")
@@ -132,91 +185,108 @@ def detect():
 
 
 @app.route('/api/download', methods=['POST'])
+@swag_from({
+    'tags': ['Download'],
+    'parameters': [
+        {
+            'name': 'body',
+            'in': 'body',
+            'required': True,
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'url': {'type': 'string'},
+                    'platform': {'type': 'string'},
+                    'option': {'type': 'string'},
+                    'format_id': {'type': 'string'}
+                },
+                'required': ['url', 'platform', 'option']
+            }
+        }
+    ],
+    'responses': {
+        200: {'description': 'Download started'},
+        400: {'description': 'Invalid input'},
+        500: {'description': 'Server error'}
+    }
+})
 def download():
     """Download media with specified options"""
+
     try:
         data = request.json
         url = data.get('url', '')
         platform = data.get('platform', '')
         option = data.get('option', '')
         format_id = data.get('format_id', None)
-        
         if not url or not platform:
+            logger.warning('Missing url or platform in /api/download')
             return jsonify({'error': 'URL and platform are required'}), 400
-        
-        # Process download based on platform and option
+        # Async download task
+        task = async_download.apply_async(args=[platform, url, option, format_id])
+        logger.info(f"Download task queued: {task.id} for {platform} - {url}")
+        return jsonify({'success': True, 'message': 'Download started', 'task_id': task.id})
+    except Exception as e:
+        logger.exception(f"Error in /api/download: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+# Celery async download task
+@celery.task()
+def async_download(platform, url, option, format_id):
+    try:
         if platform == 'youtube':
             if option == 'audio':
                 youtube_dl.download_audio(url)
-                message = 'Audio download started'
             elif option == 'subtitles':
                 youtube_dl.download_subtitles_only(url)
-                message = 'Subtitles download started'
             elif option == 'thumbnail':
                 youtube_dl.download_thumbnail(url)
-                message = 'Thumbnail download started'
             elif option == 'playlist':
                 youtube_dl.download_playlist(url)
-                message = 'Playlist download started'
-            else:  # video
+            else:
                 if format_id:
-                    # format_id is actually the quality height
                     youtube_dl.download_video(url, quality_height=int(format_id))
                 else:
                     youtube_dl.download_video(url)
-                message = 'Video download started'
-        
         elif platform == 'instagram':
             if option == 'audio':
                 instagram_dl.download_audio(url)
-                message = 'Audio download started'
-            else:  # post
+            else:
                 instagram_dl.download_post(url)
-                message = 'Post download started'
-        
         elif platform == 'facebook':
             if option == 'audio':
                 facebook_dl.download_audio(url)
-                message = 'Audio download started'
-            else:  # post
+            else:
                 facebook_dl.download_post(url)
-                message = 'Post download started'
-        
-        return jsonify({'success': True, 'message': message})
-        
+        logger.info(f"Download completed for {platform} - {url}")
+        return {'status': 'completed'}
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.exception(f"Download failed for {platform} - {url}: {str(e)}")
+        return {'status': 'failed', 'error': str(e)}
+
 
 
 @app.route('/api/health', methods=['GET'])
+@swag_from({
+    'tags': ['Health'],
+    'responses': {
+        200: {'description': 'API is healthy'}
+    }
+})
 def health():
     """Health check endpoint"""
     return jsonify({'status': 'ok', 'message': 'UniDownload API is running'})
 
 
-@app.route('/')
-def index():
-    """Serve the main HTML page"""
-    return send_file('static/index.html')
+
+## Removed static file serving. Backend now only exposes API endpoints.
+
 
 
 if __name__ == '__main__':
-    # Create static directory if it doesn't exist
     os.makedirs('static', exist_ok=True)
-    
-    # Get port from environment variable (for Render deployment)
     port = int(os.environ.get('PORT', 5000))
-    
-    print("=" * 60)
-    print("UniDownload API Server")
-    print("=" * 60)
-    print(f"Server starting on port {port}")
-    print("API Documentation:")
-    print("  POST /api/detect  - Detect platform and get media info")
-    print("  POST /api/download - Download media")
-    print("  GET  /api/health  - Health check")
-    print("=" * 60)
-    
-    # Use debug mode only in development
+    logger.info(f"Starting UniDownload API Server on port {port}")
+    logger.info("API docs available at /apidocs")
     debug_mode = os.environ.get('FLASK_ENV') != 'production'
     app.run(debug=debug_mode, host='0.0.0.0', port=port)

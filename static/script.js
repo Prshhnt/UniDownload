@@ -1,5 +1,9 @@
 // API Base URL
-const API_BASE = 'http://localhost:5000/api';
+if (typeof window.API_BASE_URL === 'string' && window.API_BASE_URL.trim() !== '') {
+    var API_BASE = window.API_BASE_URL.trim();
+} else {
+    throw new Error('API_BASE_URL is not set in env.js. Please set window.API_BASE_URL in static/env.js');
+}
 
 // Global state
 let currentMediaData = null;
@@ -122,6 +126,7 @@ function displayYouTubeOptions(data) {
         });
     }
 
+
     // Show/hide subtitle button
     const subtitlesBtn = document.getElementById('subtitlesBtn');
     if (data.has_subtitles) {
@@ -146,6 +151,7 @@ function displayYouTubeOptions(data) {
     });
 
     optionsSection.classList.remove('hidden');
+    // Removed advanced options for API URL update. API_BASE is set from env.js only.
 }
 
 // Display Instagram Options
@@ -161,17 +167,7 @@ function displayInstagramOptions(data) {
 }
 
 // Display Facebook Options
-function displayFacebookOptions(data) {
-    const optionsSection = document.getElementById('facebookOptions');
-    
-    // Add click handlers
-    optionsSection.querySelectorAll('.option-btn').forEach(btn => {
-        btn.onclick = () => handleDownload('facebook', btn.dataset.option);
-    });
-
-    optionsSection.classList.remove('hidden');
-}
-
+        // Advanced Options removed. API URL is loaded from env.js
 // Handle Download
 async function handleDownload(platform, option, formatId = null) {
     const downloadData = {

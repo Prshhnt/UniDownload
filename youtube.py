@@ -61,6 +61,26 @@ class YouTubeDownloader:
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'http_headers': {
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1',
+                'Cache-Control': 'max-age=0',
+            },
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'web'],
+                    'player_skip': ['configs'],
+                }
+            },
         }
         
         try:
@@ -180,6 +200,13 @@ class YouTubeDownloader:
             'outtmpl': output_template,
             'merge_output_format': output_format,
             'progress_hooks': [self._download_progress_hook],
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'http_headers': {
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br',
+            },
+            'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
         }
         
         # Add subtitle options
@@ -239,6 +266,12 @@ class YouTubeDownloader:
             'merge_output_format': output_format,
             'progress_hooks': [self._download_progress_hook],
             'ignoreerrors': True,  # Continue on errors
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'http_headers': {
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+            },
+            'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
         }
         
         if download_subs:
@@ -300,6 +333,8 @@ class YouTubeDownloader:
             'skip_download': True,
             'writethumbnail': True,
             'outtmpl': output_template,
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
         }
         
         try:
@@ -326,6 +361,8 @@ class YouTubeDownloader:
             'subtitleslangs': ['en'],  # Only English to avoid rate limiting
             'subtitlesformat': 'srt',
             'outtmpl': output_template,
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
         }
         
         try:
@@ -354,6 +391,12 @@ class YouTubeDownloader:
                 'preferredquality': '192',
             }],
             'progress_hooks': [self._download_progress_hook],
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'http_headers': {
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+            },
+            'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
         }
         
         try:
@@ -518,6 +561,12 @@ class YouTubeDownloader:
             }],
             'progress_hooks': [self._download_progress_hook],
             'ignoreerrors': True,
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'http_headers': {
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+            },
+            'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
         }
         
         try:

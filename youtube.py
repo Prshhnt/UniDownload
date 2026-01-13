@@ -77,8 +77,9 @@ class YouTubeDownloader:
             },
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['android', 'web'],
-                    'player_skip': ['configs'],
+                    'player_client': ['android', 'ios', 'web', 'mweb'],
+                    'player_skip': ['webpage', 'configs'],
+                    'skip': ['hls', 'dash'],
                 }
             },
         }

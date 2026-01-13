@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>UniDownload - Universal Media Downloader</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
@@ -14,7 +14,6 @@
         </header>
 
         <main>
-
             <!-- URL Input Section -->
             <div class="input-section">
                 <input 
@@ -23,14 +22,11 @@
                     placeholder="Paste any YouTube, Instagram, or Facebook URL here..."
                     autocomplete="off"
                 />
-                <button id="detectBtn" class="btn-primary">
+                <button type="button" id="detectBtn" class="btn-primary">
                     <span class="btn-text">Detect & Analyze</span>
                     <span class="loader"></span>
                 </button>
             </div>
-
-
-<!-- Advanced Options removed. API URL will be loaded from env file. -->
 
             <!-- Status Messages -->
             <div id="statusMessage" class="status-message hidden"></div>
@@ -47,58 +43,10 @@
                     </div>
                 </div>
 
-                <!-- YouTube Options -->
-                <div id="youtubeOptions" class="options-section hidden">
+                <!-- Download Options Container -->
+                <div id="downloadOptions" class="options-section">
                     <h3>📥 Download Options</h3>
-                    
-                    <!-- Video Quality Options -->
-                    <div class="option-group">
-                        <h4>Video Quality</h4>
-                        <div id="formatsList" class="formats-list"></div>
-                    </div>
-
-                    <!-- Additional Options -->
-                    <div class="option-group">
-                        <h4>Other Options</h4>
-                        <button class="option-btn" data-option="audio">
-                            🎵 Audio Only (MP3)
-                        </button>
-                        <button class="option-btn" data-option="subtitles" id="subtitlesBtn">
-                            📝 Subtitles Only
-                        </button>
-                        <button class="option-btn" data-option="thumbnail">
-                            🖼️ Thumbnail Only
-                        </button>
-                        <button class="option-btn" data-option="playlist" id="playlistBtn">
-                            📑 Download Playlist
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Instagram Options -->
-                <div id="instagramOptions" class="options-section hidden">
-                    <h3>📥 Download Options</h3>
-                    <div class="option-group">
-                        <button class="option-btn" data-option="post">
-                            📸 Download Post/Reel/Story
-                        </button>
-                        <button class="option-btn" data-option="audio">
-                            🎵 Audio Only (MP3)
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Facebook Options -->
-                <div id="facebookOptions" class="options-section hidden">
-                    <h3>📥 Download Options</h3>
-                    <div class="option-group">
-                        <button class="option-btn" data-option="post">
-                            📱 Download Post/Video/Image
-                        </button>
-                        <button class="option-btn" data-option="audio">
-                            🎵 Audio Only (MP3)
-                        </button>
-                    </div>
+                    <div id="optionsContainer"></div>
                 </div>
             </div>
 
@@ -111,11 +59,10 @@
 
         <footer>
             <p>Supports YouTube, Instagram & Facebook</p>
-            <p class="note">⚠️ Downloads are saved to the <code>downloads/</code> folder</p>
         </footer>
     </div>
 
-    <script src="/static/env.js"></script>
-    <script src="/static/script.js"></script>
+    <script src="env.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>

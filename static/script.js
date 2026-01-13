@@ -1,4 +1,4 @@
-// API Base URL
+// Load API URL from env
 if (typeof window.API_BASE_URL === 'string' && window.API_BASE_URL.trim() !== '') {
     var API_BASE = window.API_BASE_URL.trim();
 } else {
@@ -9,24 +9,48 @@ if (typeof window.API_BASE_URL === 'string' && window.API_BASE_URL.trim() !== ''
 let currentMediaData = null;
 let currentUrl = '';
 
-// DOM Elements
-const urlInput = document.getElementById('urlInput');
-const detectBtn = document.getElementById('detectBtn');
-const statusMessage = document.getElementById('statusMessage');
-const mediaInfo = document.getElementById('mediaInfo');
-const downloadProgress = document.getElementById('downloadProgress');
-const downloadsList = document.getElementById('downloadsList');
-
-// Event Listeners
-detectBtn.addEventListener('click', handleDetect);
-urlInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') handleDetect();
+// Initialize app
+document.addEventListener('DOMContentLoaded', () => {
+    initializeApp();
 });
 
-// Handle Detect Button
+function initializeApp() {
+    const urlInput = document.getElementById('urlInput');
+    const detectBtn = document.getElementById('detectBtn');
+
+    // Event listeners
+    detectBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        handleDetect();
+    });
+
+    urlInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            e.stopPropagation();
+            handleDetect();
+        }
+    });
+
+    // Check API health
+    checkApiHealth();
+}
+
+async function checkApiHealth() {
+    try {
+        const response = await fetch(`${API_BASE}/health`);
+        const data = await response.json();
+        console.log('API Status:', data);
+    } catch (error) {
+        showStatus('⚠️ API server is not running. Please start the server first.', 'error');
+    }
+}
+
 async function handleDetect() {
+    const urlInput = document.getElementById('urlInput');
     const url = urlInput.value.trim();
-    
+
     if (!url) {
         showStatus('Please enter a URL', 'error');
         return;
@@ -63,113 +87,135 @@ async function handleDetect() {
     }
 }
 
-// Display Media Info
 function displayMediaInfo(data) {
-    // Set thumbnail
+    const mediaInfo = document.getElementById('mediaInfo');
     const thumbnail = document.getElementById('thumbnail');
-    thumbnail.src = data.thumbnail || 'https://via.placeholder.com/200x112?text=No+Thumbnail';
-
-    // Set platform badge
     const platformBadge = document.getElementById('platformBadge');
+    const title = document.getElementById('title');
+    const uploader = document.getElementById('uploader');
+    const duration = document.getElementById('duration');
+    const optionsContainer = document.getElementById('optionsContainer');
+
+    // Set media info
+    thumbnail.src = data.thumbnail || 'https://via.placeholder.com/200x112?text=No+Thumbnail';
     platformBadge.textContent = data.platform;
     platformBadge.className = `platform-badge ${data.platform}`;
+    title.textContent = data.title;
+    uploader.textContent = `👤 ${data.uploader}`;
 
-    // Set title and details
-    document.getElementById('title').textContent = data.title;
-    document.getElementById('uploader').textContent = `👤 ${data.uploader}`;
-    
-    const durationEl = document.getElementById('duration');
     if (data.duration) {
         const minutes = Math.floor(data.duration / 60);
         const seconds = data.duration % 60;
-        durationEl.textContent = `⏱️ ${minutes}:${seconds.toString().padStart(2, '0')}`;
-        durationEl.style.display = 'block';
+        duration.textContent = `⏱️ ${minutes}:${seconds.toString().padStart(2, '0')}`;
+        duration.style.display = 'block';
     } else {
-        durationEl.style.display = 'none';
+        duration.style.display = 'none';
     }
 
-    // Hide all option sections first
-    document.getElementById('youtubeOptions').classList.add('hidden');
-    document.getElementById('instagramOptions').classList.add('hidden');
-    document.getElementById('facebookOptions').classList.add('hidden');
+    // Clear previous options
+    optionsContainer.innerHTML = '';
 
-    // Show platform-specific options
+    // Add platform-specific options
     if (data.platform === 'youtube') {
-        displayYouTubeOptions(data);
+        addYouTubeOptions(data, optionsContainer);
     } else if (data.platform === 'instagram') {
-        displayInstagramOptions(data);
+        addInstagramOptions(data, optionsContainer);
     } else if (data.platform === 'facebook') {
-        displayFacebookOptions(data);
+        addFacebookOptions(data, optionsContainer);
     }
 
     mediaInfo.classList.remove('hidden');
 }
 
-// Display YouTube Options
-function displayYouTubeOptions(data) {
-    const optionsSection = document.getElementById('youtubeOptions');
-    const formatsList = document.getElementById('formatsList');
-    
-    // Clear previous formats
-    formatsList.innerHTML = '';
-
-    // Add format buttons
+function addYouTubeOptions(data, container) {
+    // Video quality options
     if (data.formats && data.formats.length > 0) {
+        const videoGroup = document.createElement('div');
+        videoGroup.className = 'option-group';
+        videoGroup.innerHTML = '<h4>Video Quality</h4>';
+        
         data.formats.forEach(format => {
-            const btn = document.createElement('button');
-            btn.className = 'option-btn';
-            btn.textContent = `📹 ${format.label}`;
-            btn.dataset.option = 'video';
-            btn.dataset.formatId = format.format_id;
-            btn.onclick = () => handleDownload('youtube', 'video', format.format_id);
-            formatsList.appendChild(btn);
+            const btn = createDownloadButton(`📹 ${format.label}`, () => {
+                startDownload('youtube', 'video', format.format_id);
+            });
+            videoGroup.appendChild(btn);
         });
+        
+        container.appendChild(videoGroup);
     }
 
+    // Other options
+    const otherGroup = document.createElement('div');
+    otherGroup.className = 'option-group';
+    otherGroup.innerHTML = '<h4>Other Options</h4>';
 
-    // Show/hide subtitle button
-    const subtitlesBtn = document.getElementById('subtitlesBtn');
+    otherGroup.appendChild(createDownloadButton('🎵 Audio Only (MP3)', () => {
+        startDownload('youtube', 'audio');
+    }));
+
     if (data.has_subtitles) {
-        subtitlesBtn.style.display = 'block';
-    } else {
-        subtitlesBtn.style.display = 'none';
+        otherGroup.appendChild(createDownloadButton('📝 Subtitles', () => {
+            startDownload('youtube', 'subtitles');
+        }));
     }
 
-    // Show/hide playlist button based on URL
-    const playlistBtn = document.getElementById('playlistBtn');
+    otherGroup.appendChild(createDownloadButton('🖼️ Thumbnail', () => {
+        startDownload('youtube', 'thumbnail');
+    }));
+
     if (currentUrl.includes('playlist') || currentUrl.includes('list=')) {
-        playlistBtn.style.display = 'block';
-    } else {
-        playlistBtn.style.display = 'none';
+        otherGroup.appendChild(createDownloadButton('📑 Playlist', () => {
+            startDownload('youtube', 'playlist');
+        }));
     }
 
-    // Add click handlers for other options
-    optionsSection.querySelectorAll('.option-btn[data-option]').forEach(btn => {
-        if (!btn.dataset.formatId) {
-            btn.onclick = () => handleDownload('youtube', btn.dataset.option);
-        }
-    });
-
-    optionsSection.classList.remove('hidden');
-    // Removed advanced options for API URL update. API_BASE is set from env.js only.
+    container.appendChild(otherGroup);
 }
 
-// Display Instagram Options
-function displayInstagramOptions(data) {
-    const optionsSection = document.getElementById('instagramOptions');
-    
-    // Add click handlers
-    optionsSection.querySelectorAll('.option-btn').forEach(btn => {
-        btn.onclick = () => handleDownload('instagram', btn.dataset.option);
-    });
+function addInstagramOptions(data, container) {
+    const group = document.createElement('div');
+    group.className = 'option-group';
 
-    optionsSection.classList.remove('hidden');
+    group.appendChild(createDownloadButton('📸 Download Post/Reel/Story', () => {
+        startDownload('instagram', 'post');
+    }));
+
+    group.appendChild(createDownloadButton('🎵 Audio Only (MP3)', () => {
+        startDownload('instagram', 'audio');
+    }));
+
+    container.appendChild(group);
 }
 
-// Display Facebook Options
-        // Advanced Options removed. API URL is loaded from env.js
-// Handle Download
-async function handleDownload(platform, option, formatId = null) {
+function addFacebookOptions(data, container) {
+    const group = document.createElement('div');
+    group.className = 'option-group';
+
+    group.appendChild(createDownloadButton('📱 Download Post/Video', () => {
+        startDownload('facebook', 'post');
+    }));
+
+    group.appendChild(createDownloadButton('🎵 Audio Only (MP3)', () => {
+        startDownload('facebook', 'audio');
+    }));
+
+    container.appendChild(group);
+}
+
+function createDownloadButton(text, onClick) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'option-btn';
+    btn.textContent = text;
+    btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onClick();
+    });
+    return btn;
+}
+
+async function startDownload(platform, option, formatId = null) {
     const downloadData = {
         url: currentUrl,
         platform: platform,
@@ -180,9 +226,8 @@ async function handleDownload(platform, option, formatId = null) {
         downloadData.format_id = formatId;
     }
 
-    // Add to downloads list
     const downloadId = Date.now();
-    addDownloadItem(downloadId, option, 'Initializing...');
+    addDownloadItem(downloadId, option, 'Fetching download URL...');
 
     try {
         const response = await fetch(`${API_BASE}/download`, {
@@ -199,8 +244,18 @@ async function handleDownload(platform, option, formatId = null) {
             throw new Error(data.error || 'Download failed');
         }
 
-        updateDownloadItem(downloadId, 'success', data.message);
-        showStatus(data.message, 'success');
+        if (data.download_url) {
+            updateDownloadItem(downloadId, 'success', 'Opening download...');
+            // Open in new window
+            const downloadWindow = window.open(data.download_url, '_blank');
+            if (!downloadWindow) {
+                showStatus('Please allow popups to download', 'error');
+            } else {
+                showStatus('Download opened in new tab!', 'success');
+            }
+        } else {
+            throw new Error('No download URL received');
+        }
 
     } catch (error) {
         updateDownloadItem(downloadId, 'error', error.message);
@@ -208,8 +263,10 @@ async function handleDownload(platform, option, formatId = null) {
     }
 }
 
-// Add Download Item
 function addDownloadItem(id, option, message) {
+    const downloadProgress = document.getElementById('downloadProgress');
+    const downloadsList = document.getElementById('downloadsList');
+    
     downloadProgress.classList.remove('hidden');
     
     const item = document.createElement('div');
@@ -226,7 +283,6 @@ function addDownloadItem(id, option, message) {
     downloadsList.insertBefore(item, downloadsList.firstChild);
 }
 
-// Update Download Item
 function updateDownloadItem(id, status, message) {
     const item = document.getElementById(`download-${id}`);
     if (!item) return;
@@ -243,25 +299,25 @@ function updateDownloadItem(id, status, message) {
     }
 }
 
-// Show Status Message
 function showStatus(message, type) {
+    const statusMessage = document.getElementById('statusMessage');
     statusMessage.textContent = message;
     statusMessage.className = `status-message ${type}`;
     statusMessage.classList.remove('hidden');
 }
 
-// Hide Status Message
 function hideStatus() {
+    const statusMessage = document.getElementById('statusMessage');
     statusMessage.classList.add('hidden');
 }
 
-// Hide Media Info
 function hideMediaInfo() {
+    const mediaInfo = document.getElementById('mediaInfo');
     mediaInfo.classList.add('hidden');
 }
 
-// Set Loading State
 function setLoading(loading) {
+    const detectBtn = document.getElementById('detectBtn');
     if (loading) {
         detectBtn.classList.add('loading');
         detectBtn.disabled = true;
@@ -270,14 +326,3 @@ function setLoading(loading) {
         detectBtn.disabled = false;
     }
 }
-
-// Check API Health on Load
-window.addEventListener('load', async () => {
-    try {
-        const response = await fetch(`${API_BASE}/health`);
-        const data = await response.json();
-        console.log('API Status:', data);
-    } catch (error) {
-        showStatus('⚠️ API server is not running. Please start the server first.', 'error');
-    }
-});

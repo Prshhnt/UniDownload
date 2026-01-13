@@ -10,11 +10,12 @@ from flasgger import Swagger, swag_from
 import logging
 import os
 import re
+import yt_dlp
 from youtube import YouTubeDownloader
 from instagram import InstagramDownloader
 from facebook import FacebookDownloader
 
-# Celery setup
+# Celery setup (optional - for future async tasks)
 from celery import Celery
 
 def make_celery(app):
@@ -205,13 +206,13 @@ def detect():
         }
     ],
     'responses': {
-        200: {'description': 'Download started'},
+        200: {'description': 'Download URL returned'},
         400: {'description': 'Invalid input'},
         500: {'description': 'Server error'}
     }
 })
 def download():
-    """Download media with specified options"""
+    """Get download URL for media - download happens in browser"""
 
     try:
         data = request.json
@@ -219,50 +220,124 @@ def download():
         platform = data.get('platform', '')
         option = data.get('option', '')
         format_id = data.get('format_id', None)
+        
         if not url or not platform:
             logger.warning('Missing url or platform in /api/download')
             return jsonify({'error': 'URL and platform are required'}), 400
-        # Async download task
-        task = async_download.apply_async(args=[platform, url, option, format_id])
-        logger.info(f"Download task queued: {task.id} for {platform} - {url}")
-        return jsonify({'success': True, 'message': 'Download started', 'task_id': task.id})
+        
+        # Get direct download URL using yt-dlp
+        download_url = None
+        filename = None
+        
+        if platform == 'youtube':
+            ydl_opts = {
+                'quiet': True,
+                'no_warnings': True,
+                'nocheckcertificate': True,
+                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+            
+            if option == 'audio':
+                ydl_opts['format'] = 'bestaudio/best'
+            elif option == 'thumbnail':
+                # Return thumbnail URL directly
+                info = youtube_dl.get_video_info(url)
+                if info and info.get('thumbnail'):
+                    return jsonify({
+                        'success': True,
+                        'download_url': info['thumbnail'],
+                        'filename': f"{info.get('title', 'thumbnail')}.jpg"
+                    })
+            elif option == 'subtitles':
+                # Get subtitle URLs
+                info = youtube_dl.get_video_info(url)
+                if info and info.get('subtitles'):
+                    # Return first available subtitle
+                    for lang, subs in info['subtitles'].items():
+                        if subs:
+                            return jsonify({
+                                'success': True,
+                                'download_url': subs[0]['url'],
+                                'filename': f"{info.get('title', 'subtitle')}_{lang}.vtt"
+                            })
+            elif option == 'playlist':
+                # For playlists, return error - not supported for browser download
+                return jsonify({'error': 'Playlist downloads are not supported in browser mode. Please download videos individually.'}), 400
+            else:  # video
+                # More flexible format selection to avoid "not available" errors
+                if format_id:
+                    # Try multiple format combinations
+                    ydl_opts['format'] = f'(bestvideo[height<={format_id}]+bestaudio/best[height<={format_id}])/best'
+                else:
+                    ydl_opts['format'] = 'best'
+            
+            if option not in ['thumbnail', 'subtitles', 'playlist']:
+                try:
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        info = ydl.extract_info(url, download=False)
+                        # For formats with separate audio/video, get the requested formats
+                        if 'requested_formats' in info:
+                            # Use the first format (video) URL
+                            download_url = info['requested_formats'][0]['url']
+                        else:
+                            download_url = info.get('url')
+                        
+                        filename = f"{info.get('title', 'video')}.{info.get('ext', 'mp4')}"
+                except Exception as e:
+                    logger.exception(f"yt-dlp error: {str(e)}")
+                    return jsonify({'error': f'Failed to get download URL: {str(e)}'}), 500
+        
+        elif platform == 'instagram':
+            ydl_opts = {
+                'quiet': True,
+                'no_warnings': True,
+                'cookiefile': 'cookies.txt' if os.path.exists('cookies.txt') else None
+            }
+            
+            if option == 'audio':
+                ydl_opts['format'] = 'bestaudio/best'
+            
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                    download_url = info.get('url')
+                    filename = f"{info.get('title', 'instagram')}.{info.get('ext', 'mp4')}"
+            except Exception as e:
+                logger.error(f"Instagram error: {str(e)}")
+                return jsonify({'error': f'Failed to get download URL: {str(e)}'}), 500
+        
+        elif platform == 'facebook':
+            ydl_opts = {
+                'quiet': True,
+                'no_warnings': True,
+                'cookiefile': 'cookies.txt' if os.path.exists('cookies.txt') else None
+            }
+            
+            if option == 'audio':
+                ydl_opts['format'] = 'bestaudio/best'
+            
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                    download_url = info.get('url')
+                    filename = f"{info.get('title', 'facebook')}.{info.get('ext', 'mp4')}"
+            except Exception as e:
+                logger.error(f"Facebook error: {str(e)}")
+                return jsonify({'error': f'Failed to get download URL: {str(e)}'}), 500
+        
+        if download_url:
+            logger.info(f"Download URL generated for {platform} - {url}")
+            return jsonify({
+                'success': True,
+                'download_url': download_url,
+                'filename': filename
+            })
+        else:
+            return jsonify({'error': 'Failed to generate download URL'}), 500
+        
     except Exception as e:
         logger.exception(f"Error in /api/download: {str(e)}")
         return jsonify({'error': str(e)}), 500
-
-# Celery async download task
-@celery.task()
-def async_download(platform, url, option, format_id):
-    try:
-        if platform == 'youtube':
-            if option == 'audio':
-                youtube_dl.download_audio(url)
-            elif option == 'subtitles':
-                youtube_dl.download_subtitles_only(url)
-            elif option == 'thumbnail':
-                youtube_dl.download_thumbnail(url)
-            elif option == 'playlist':
-                youtube_dl.download_playlist(url)
-            else:
-                if format_id:
-                    youtube_dl.download_video(url, quality_height=int(format_id))
-                else:
-                    youtube_dl.download_video(url)
-        elif platform == 'instagram':
-            if option == 'audio':
-                instagram_dl.download_audio(url)
-            else:
-                instagram_dl.download_post(url)
-        elif platform == 'facebook':
-            if option == 'audio':
-                facebook_dl.download_audio(url)
-            else:
-                facebook_dl.download_post(url)
-        logger.info(f"Download completed for {platform} - {url}")
-        return {'status': 'completed'}
-    except Exception as e:
-        logger.exception(f"Download failed for {platform} - {url}: {str(e)}")
-        return {'status': 'failed', 'error': str(e)}
 
 
 
@@ -289,4 +364,4 @@ if __name__ == '__main__':
     logger.info(f"Starting UniDownload API Server on port {port}")
     logger.info("API docs available at /apidocs")
     debug_mode = os.environ.get('FLASK_ENV') != 'production'
-    app.run(debug=debug_mode, host='0.0.0.0', port=port)
+    app.run(debug=debug_mode, host='0.0.0.0', port=port, use_reloader=False)

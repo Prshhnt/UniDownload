@@ -3,9 +3,7 @@ services:
     name: unidownload
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn server:app
+    startCommand: gunicorn server:app --bind 0.0.0.0:$PORT
     envVars:
       - key: FLASK_ENV
         value: production
-    nativeEnvironment:
-      - ffmpeg
